@@ -1,92 +1,89 @@
 let lastRarity = null; // 上次抽卡的品质
-let fourStarProbability = 0; // 四星抽卡的概率
-let tenDrawResults = []; // 存储十连抽结果
-let drawHistory = []; // 抽卡历史记录
+let drawHistory = []; // 抽卡记录
+let drawCount = 0; // 记录总抽卡次数
 
 function drawCard() {
+    // 抽卡的随机数
     const randomNum = Math.random();
+    drawCount++; // 增加抽卡次数
 
+    // 抽取五星品质的概率计算
+    let starFiveProbability = 0.01; // 初始概率1%
+
+    if (drawCount >= 70) {
+        starFiveProbability = Math.min(1, 0.01 + ((drawCount - 70) * 0.1));
+    }
+
+    // 处理品质
     if (lastRarity === 'SSR') {
         // 如果上次是SSR，50%概率抽到SSR或SRR
-        lastRarity = randomNum < 0.5 ? 'SSR' : 'SRR';
+        lastRarity = (randomNum < 0.5) ? 'SSR' : 'SRR';
     } else if (lastRarity === 'SRR') {
         // 如果上次是SRR，下次必定抽到SSR
         lastRarity = 'SSR';
     } else {
         // 普通抽卡逻辑
-        if (randomNum < 0.01) {
-            lastRarity = 'SSR'; // 1%概率SSR
-        } else if (randomNum < 0.1) {
-            lastRarity = 'SRR'; // 9%概率SRR
+        if (randomNum < starFiveProbability) {
+            lastRarity = (Math.random() < 0.5) ? 'SSR' : 'SRR'; // 50%概率选择SSR或SRR
         } else if (randomNum < 0.3) {
             lastRarity = 'SR'; // 20%概率SR
         } else {
-            lastRarity = 'R'; // 70%概率R
+            lastRarity = 'R'; // 69%概率R
         }
     }
 
-    // 添加抽卡历史记录
-    drawHistory.push(lastRarity);
+    // 每十抽至少出一个四星品质的SR
+    if (drawCount % 10 === 0) {
+        lastRarity = 'SR';
+    }
+
+    drawHistory.push(lastRarity); // 记录抽卡结果
     return lastRarity;
 }
 
 function singleDraw() {
     const result = drawCard();
     displayResult([result]);
+    updateHistory(result);
 }
 
 function tenDraw() {
-    tenDrawResults = [];
-    let fourStarDrawn = false;
+    let tenDrawResults = [];
 
     for (let i = 0; i < 10; i++) {
         const result = drawCard();
         tenDrawResults.push(result);
-
-        if (result === 'SR') {
-            fourStarDrawn = true; // 已经抽到四星
-        }
     }
-
-    // 如果十连抽中没有四星，强制设置一个四星
-    if (!fourStarDrawn) {
-        const replaceIndex = Math.floor(Math.random() * 10);
-        tenDrawResults[replaceIndex] = 'SR'; // 随机替换为四星
-    }
-
-    // 重置四星抽卡概率
-    fourStarProbability = 0;
 
     displayResult(tenDrawResults);
+    tenDrawResults.forEach(updateHistory); // 更新历史记录
 }
 
 function displayResult(results) {
     const resultDiv = document.getElementById("result");
     resultDiv.innerHTML = ""; // 清空之前的结果
 
-    // 显示结果
     results.forEach((result, index) => {
         const resultItem = document.createElement("div");
         resultItem.textContent = `第 ${index + 1} 抽: ${result}`;
         resultDiv.appendChild(resultItem);
     });
-
-    // 显示历史记录
-    const historyDiv = document.getElementById("history");
-    historyDiv.innerHTML = ""; // 清空之前的历史记录
-    drawHistory.forEach((history, index) => {
-        const historyItem = document.createElement("div");
-        historyItem.textContent = `历史记录 ${index + 1}: ${history}`;
-        historyDiv.appendChild(historyItem);
-    });
 }
+
+function updateHistory(result) {
+    const historyDiv = document.getElementById("history");
+    const historyItem = document.createElement("div");
+    historyItem.textContent = `抽卡记录: ${result}`;
+    historyDiv.appendChild(historyItem);
+}
+
+// 重置抽卡记录
+document.getElementById("resetHistory").addEventListener("click", () => {
+    drawHistory = [];
+    drawCount = 0;
+    document.getElementById("history").innerHTML = ""; // 清空历史记录
+});
 
 // 添加事件监听器
 document.getElementById("singleDraw").addEventListener("click", singleDraw);
 document.getElementById("tenDraw").addEventListener("click", tenDraw);
-
-// 重置抽卡历史
-document.getElementById("resetHistory").addEventListener("click", () => {
-    drawHistory = [];
-    document.getElementById("history").innerHTML = ""; // 清空历史记录
-});
