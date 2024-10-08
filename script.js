@@ -1,103 +1,162 @@
-let lastRarity = null; // 上次抽卡的品质
-let totalDraws = 0; // 总抽卡次数
-let tenDrawResults = []; // 存储十连抽结果
+let drawCount = 0; // 当前总的抽卡次数
+let fiveStarCounter = 0; // 用于追踪五星保底计数
+let history = []; // 保存抽卡历史
+let currentPage = 1;
+const recordsPerPage = 5;
+let totalPages = 1;
 
-function drawCard() {
-    totalDraws++;
-    const randomNum = Math.random();
-    let currentRarity;
+let isGuaranteedSSR = false; // 是否处于大保底状态
 
-    // 计算五星品质的概率
-    let fiveStarProbability = totalDraws <= 69 ? 0.01 : Math.min(0.1 * (totalDraws - 69), 1);
+// 五星卡的概率数组，前1-70抽固定1%，第71到80抽概率递增
+const fiveStarRates = Array(70).fill(0.01).concat(Array(10).fill(0).map((_, i) => 0.01 + i * 0.099));
 
-    if (lastRarity === 'SSR') {
-        // 上次是SSR，50%概率抽到SSR或SRR
-        currentRarity = randomNum < 0.5 ? 'SSR' : 'SRR';
-    } else if (lastRarity === 'SRR') {
-        // 上次是SRR，下一次必定抽到SSR
-        currentRarity = 'SSR';
-    } else {
-        // 普通抽卡逻辑
-        if (randomNum < fiveStarProbability) {
-            // 处理五星品质的抽取
-            currentRarity = randomNum < fiveStarProbability * 0.5 ? 'SSR' : 'SRR';
-        } else if (totalDraws <= 10) {
-            // 前十抽，四星品质概率
-            let fourStarProbability = (totalDraws / 10) * 0.1; // 10% 到 100%
-            currentRarity = randomNum < fourStarProbability ? 'SR' : 'R';
-        } else {
-            // 之后的抽卡默认三星品质
-            currentRarity = 'R';
-        }
-    }
+document.getElementById('single-draw').addEventListener('click', draw);
+document.getElementById('quick-draw').addEventListener('click', quickDraw);
+document.getElementById('reset').addEventListener('click', resetHistory);
+document.getElementById('prev-page').addEventListener('click', prevPage);
+document.getElementById('next-page').addEventListener('click', nextPage);
 
-    // 更新上次抽卡品质
-    lastRarity = currentRarity;
-    return currentRarity;
-}
-
-function singleDraw() {
+function draw() {
     const result = drawCard();
-    displayResult([result]);
+    displayResult(result);
+    updatePagination();
 }
 
-function tenDraw() {
-    tenDrawResults = [];
-
-    // 十连抽至少获得一个四星
-    let fourStarDrawn = false;
-
+function quickDraw() {
+    let results = [];
     for (let i = 0; i < 10; i++) {
         const result = drawCard();
-        tenDrawResults.push(result);
-        
-        if (result === 'SR') {
-            fourStarDrawn = true; // 已经抽到四星
+        results.push(result);
+        if (fiveStarCounter === 80) break; // 快速抽卡时，如果到达第80抽，立刻出五星并停止
+    }
+    displayQuickDrawResults(results);
+    updatePagination();
+}
+
+function drawCard() {
+    let result = '';
+
+    // 增加抽卡计数
+    drawCount++;
+    fiveStarCounter++;
+
+    // 第80抽保底五星
+    if (fiveStarCounter === 80) {
+        result = drawFiveStar();
+        fiveStarCounter = 0; // 重置五星计数器
+    } else {
+        // 检查是否出五星卡
+        if (Math.random() < fiveStarRates[fiveStarCounter - 1]) {
+            result = drawFiveStar();
+            fiveStarCounter = 0; // 重置五星卡计数器
+        } else {
+            // 检查是否出四星卡
+            const fourStarChance = calculateFourStarChance();
+            if (Math.random() < fourStarChance) {
+                result = 'SR';
+                resetFourStarCount(); // 重置四星卡计数
+            } else {
+                // 默认出三星卡
+                result = 'R';
+            }
         }
     }
 
-    // 如果十连抽中没有四星，强制设置一个四星
-    if (!fourStarDrawn) {
-        const replaceIndex = Math.floor(Math.random() * 10);
-        tenDrawResults[replaceIndex] = 'SR'; // 随机替换为四星
+    history.push(result);
+    return result;
+}
+
+function drawFiveStar() {
+    let result;
+
+    // 判断是否处于大保底
+    if (isGuaranteedSSR) {
+        result = 'SSR';
+        isGuaranteedSSR = false; // 大保底后重置为小保底
+    } else {
+        const isSSR = Math.random() < 0.5;
+        result = isSSR ? 'SSR' : 'SRR';
+        // 如果是SRR，则下次必出SSR（大保底）
+        if (result === 'SRR') {
+            isGuaranteedSSR = true;
+        }
     }
 
-    displayResult(tenDrawResults);
+    return result;
 }
 
-function displayResult(results) {
-    const resultDiv = document.getElementById("result");
-    resultDiv.innerHTML = ""; // 清空之前的结果
+function calculateFourStarChance() {
+    // 四星保底逻辑，前7抽10%，第7-10抽等差增加
+    if (drawCount % 10 <= 7) {
+        return 0.1 * (drawCount % 10); // 前7抽
+    } else {
+        const increment = (1 - 0.1) / 3;
+        return 0.1 + (increment * (drawCount % 10 - 7)); // 第7-10抽
+    }
+}
 
-    // 显示结果
+function resetFourStarCount() {
+    drawCount = 0; // 抽到四星后，重置四星计数
+}
+
+function displayResult(result) {
+    const resultsDiv = document.getElementById('results');
+    resultsDiv.innerHTML = `<p>本次抽到: ${result}</p >`;
+}
+
+function displayQuickDrawResults(results) {
+    const resultsDiv = document.getElementById('results');
+    resultsDiv.innerHTML = `<h3>快速单抽十次结果:</h3>`;
     results.forEach((result, index) => {
-        const resultItem = document.createElement("div");
-        resultItem.textContent = `第 ${index + 1} 抽: ${result}`;
-        resultDiv.appendChild(resultItem);
+        resultsDiv.innerHTML += `<p>第 ${index + 1} 抽: ${result}</p >`;
     });
-
-    // 记录抽卡历史
-    recordHistory(results);
+    
+    displayHistory();
 }
 
-function recordHistory(results) {
-    const historyDiv = document.getElementById("history");
-    results.forEach((result) => {
-        const historyItem = document.createElement("div");
-        historyItem.className = "history-item";
-        historyItem.textContent = `抽到: ${result}`;
-        historyDiv.appendChild(historyItem);
+function resetHistory() {
+    history = [];
+    drawCount = 0;
+    fiveStarCounter = 0;
+    isGuaranteedSSR = false; // 重置大保底状态
+    currentPage = 1;
+    document.getElementById('results').innerHTML = '';
+    document.getElementById('history').innerHTML = '';
+    updatePagination();
+}
+
+function displayHistory() {
+    const historyDiv = document.getElementById('history');
+    historyDiv.innerHTML = '';
+
+    const start = (currentPage - 1) * recordsPerPage;
+    const end = start + recordsPerPage;
+    const currentHistory = history.slice(start, end);
+
+    currentHistory.forEach((record, index) => {
+        historyDiv.innerHTML += `<p>${start + index + 1}. 历史记录: ${record}</p >`;
     });
 }
 
-// 重置历史记录
-document.getElementById("resetHistory").addEventListener("click", () => {
-    lastRarity = null;
-    totalDraws = 0;
-    document.getElementById("result").innerHTML = "";
-    document.getElementById("history").innerHTML = "";
-});
+function updatePagination() {
+    totalPages = Math.ceil(history.length / recordsPerPage);
 
-// 添加事件监听器
-document.getElementById("singleDraw").addEventListener("click", singleDraw);
-document.getElementById("tenDraw").addEventListener("click", tenDraw);
+    document.getElementById('prev-page').disabled = currentPage === 1;
+    document.getElementById('next-page').disabled = currentPage === totalPages || totalPages === 0;
+
+    displayHistory();
+}
+
+function prevPage() {
+    if (currentPage > 1) {
+        currentPage--;
+        updatePagination();
+    }
+}
+
+function nextPage() {
+    if (currentPage < totalPages) {
+        currentPage++;
+        updatePagination();
+    }
+}
